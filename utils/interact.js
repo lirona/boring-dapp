@@ -1,17 +1,41 @@
 require("dotenv").config();
-const rpcURL = process.env.REACT_APP_ALCHEMY_KEY;
+const rpcURL = "https://rpc.ankr.com/eth";
 // const { createAlchemyWeb3 } = require("@alch/alchemy-web3");
 // const web3 = createAlchemyWeb3(alchemyKey);
 const Web3 = require("web3");
 const web3 = new Web3(rpcURL);
 
-const contractABI = require("../artifacts/contracts/Greeter.json");
-const contractAddress = "0x6f3f635A9762B47954229Ea479b4541eAF402A6A"; // you need this from Liron
+// const contractABI = require("../artifacts/contracts/Greeter.json");
+// const contractAddress = "0x6f3f635A9762B47954229Ea479b4541eAF402A6A"; // you need this from Liron
 
-export const helloWorldContract = new web3.eth.Contract(
-  contractABI.abi,
-  contractAddress
-);
+// export const helloWorldContract = new web3.eth.Contract(
+//   contractABI.abi,
+//   contractAddress
+// );
+
+function ascii_to_hex(str) {
+  var arr1 = [];
+  for (var n = 0, l = str.length; n < l; n++) {
+    var hex = Number(str.charCodeAt(n)).toString(16);
+    arr1.push(hex);
+  }
+  return arr1.join("");
+}
+
+export const callTransfer = async (sender, recipient, message) => {
+  const hex = ascii_to_hex(message);
+
+  console.log(sender, recipient, hex);
+  const res = await web3.eth.sendTransaction({
+    from: sender,
+    to: recipient, // new wallet address
+    val: web3.utils.toWei("1", "ether"),
+    data: hex, // todo turn this into hex
+  });
+
+  console.log(res);
+  return res;
+};
 
 export const loadCurrentMessage = async () => {
   // const message = await helloWorldContract.methods.message().call();

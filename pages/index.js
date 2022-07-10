@@ -1,13 +1,18 @@
 import React from "react";
 import { useEffect, useState } from "react";
 import Head from "next/head";
+import Image from "next/image";
 import {
   helloWorldContract,
   connectWallet,
   updateMessage,
   loadCurrentMessage,
   getCurrentWalletConnected,
+  callTransfer,
 } from "../utils/interact";
+
+require("dotenv").config();
+const rpcURL = "https://rpc.ankr.com/eth";
 
 const HelloWorld = () => {
   //state variables
@@ -15,6 +20,7 @@ const HelloWorld = () => {
   const [status, setStatus] = useState("");
   const [message, setMessage] = useState("No connection to the network."); //default message
   const [newMessage, setNewMessage] = useState("");
+  const [newAmount, setNewAmount] = useState("");
   const [newWalletAddress, setWalletAddress] = useState("");
 
   console.log(newWalletAddress);
@@ -77,8 +83,40 @@ const HelloWorld = () => {
   };
 
   const onUpdatePressed = async () => {
-    const { status } = await updateMessage(walletAddress, newMessage);
+    const sender = window.ethereum.selectedAddress;
+    const recipient = newWalletAddress;
+    const message = newMessage;
+    const val = newAmount;
+    const status = await callTransfer(sender, recipient, message, val);
     setStatus(status);
+  };
+
+  function ascii_to_hex(str) {
+    var arr1 = [];
+    for (var n = 0, l = str.length; n < l; n++) {
+      var hex = Number(str.charCodeAt(n)).toString(16);
+      arr1.push(hex);
+    }
+    return arr1.join("");
+  }
+
+  const Web3 = require("web3");
+  const web3 = new Web3(Web3.givenProvider);
+
+  const callTransfer = async (sender, recipient, message, val) => {
+    const hex = ascii_to_hex(message);
+
+    console.log(sender, recipient, hex, val);
+
+    const res = await web3.eth.sendTransaction({
+      from: sender,
+      to: recipient, // new wallet address
+      val: web3.utils.toWei("0.000002"),
+      // data: web3.utils.utf8ToHex(message),
+    });
+
+    console.log(res);
+    return res;
   };
 
   //the UI of our component
@@ -121,6 +159,14 @@ const HelloWorld = () => {
               placeholder="Update the message in your smart contract."
               onChange={e => setNewMessage(e.target.value)}
               value={newMessage}
+            />
+
+            <input
+              type="text"
+              className="border p-4 w-100 text-center"
+              placeholder="Send ETH"
+              onChange={e => setNewAmount(e.target.value)}
+              value={newAmount}
             />
           </div>
 
