@@ -1,150 +1,160 @@
-import Head from 'next/head'
-import { useEffect, useState, useRef } from 'react'
-import { ethers } from 'ethers'
-import { hasEthereum } from '../utils/ethereum'
-import Greeter from '../src/artifacts/contracts/Greeter.sol/Greeter.json'
+import React from "react";
+import { useEffect, useState } from "react";
+import Head from "next/head";
+import {
+  helloWorldContract,
+  connectWallet,
+  updateMessage,
+  loadCurrentMessage,
+  getCurrentWalletConnected,
+} from "../utils/interact";
 
-export default function Home() {
-  const [greeting, setGreetingState] = useState('')
-  const [newGreeting, setNewGreetingState] = useState('')
-  const [newGreetingMessage, setNewGreetingMessageState] = useState('')
-  const [connectedWalletAddress, setConnectedWalletAddressState] = useState('')
-  const newGreetingInputRef = useRef();
+const HelloWorld = () => {
+  //state variables
+  const [walletAddress, setWallet] = useState("");
+  const [status, setStatus] = useState("");
+  const [message, setMessage] = useState("No connection to the network."); //default message
+  const [newMessage, setNewMessage] = useState("");
+  const [newWalletAddress, setWalletAddress] = useState("");
 
-  // If wallet is already connected...
-  useEffect( () => {
-    if(! hasEthereum()) {
-      setConnectedWalletAddressState(`MetaMask unavailable`)
-      return
-    }
-    async function setConnectedWalletAddress() {
-      const provider = new ethers.providers.Web3Provider(window.ethereum);
-      const signer = provider.getSigner()
-      try {
-        const signerAddress = await signer.getAddress()
-        setConnectedWalletAddressState(`Connected wallet: ${signerAddress}`)
-      } catch {
-        setConnectedWalletAddressState('No wallet connected')
-        return;
-      }
-    }
-    setConnectedWalletAddress();
-  },[])
-  
-  // Request access to MetaMask account
-  async function requestAccount() {
-    await window.ethereum.request({ method: 'eth_requestAccounts' } )
+  console.log(newWalletAddress);
+
+  //called only once
+  useEffect(async () => {
+    const message = await loadCurrentMessage();
+    setMessage(message);
+    addSmartContractListener();
+
+    const { address, status } = await getCurrentWalletConnected();
+
+    setWallet(address);
+    setStatus(status);
+
+    addWalletListener();
+  }, []);
+
+  function addSmartContractListener() {
+    // helloWorldContract.events.UpdatedMessages({}, (error, data) => {
+    //   if (error) {
+    //     setStatus("😥 " + error.message);
+    //   } else {
+    //     setMessage(data.returnValues[1]);
+    //     setNewMessage("");
+    //     setStatus("🎉 Your message has been updated!");
+    //   }
+    // });
   }
 
-  // Call smart contract, fetch current value
-  async function fetchGreeting() {
-    if ( ! hasEthereum() ) {
-      setConnectedWalletAddressState(`MetaMask unavailable`)
-      return
-    }
-    const provider = new ethers.providers.Web3Provider(window.ethereum)
-    const contract = new ethers.Contract(process.env.NEXT_PUBLIC_GREETER_ADDRESS, Greeter.abi, provider)
-    try {
-      const data = await contract.greet()
-      setGreetingState(data)
-    } catch(error) {
-      console.log(error)
+  function addWalletListener() {
+    if (window.ethereum) {
+      window.ethereum.on("accountsChanged", accounts => {
+        if (accounts.length > 0) {
+          setWallet(accounts[0]);
+          setStatus("👆🏽 Write a message in the text-field above.");
+        } else {
+          setWallet("");
+          setStatus("🦊 Connect to Metamask using the top right button.");
+        }
+      });
+    } else {
+      setStatus(
+        <p>
+          {" "}
+          🦊{" "}
+          <a target="_blank" href={`https://metamask.io/download.html`}>
+            You must install Metamask, a virtual Ethereum wallet, in your
+            browser.
+          </a>
+        </p>
+      );
     }
   }
 
-  // Call smart contract, set new value
-  async function setGreeting() {
-    if ( ! hasEthereum() ) {
-      setConnectedWalletAddressState(`MetaMask unavailable`)
-      return
-    }
-    if(! newGreeting ) {
-      setNewGreetingMessageState('Add a new greeting first.')
-      return
-    }
-    await requestAccount()
-    const provider = new ethers.providers.Web3Provider(window.ethereum);
-    const signer = provider.getSigner()
-    const signerAddress = await signer.getAddress()
-    setConnectedWalletAddressState(`Connected wallet: ${signerAddress}`)
-    const contract = new ethers.Contract(process.env.NEXT_PUBLIC_GREETER_ADDRESS, Greeter.abi, signer)
-    const transaction = await contract.setGreeting(newGreeting)
-    await transaction.wait()
-    setNewGreetingMessageState(`Greeting updated to ${newGreeting} from ${greeting}.`)
-    newGreetingInputRef.current.value = ''
-    setNewGreetingState('')
-  }
+  const connectWalletPressed = async () => {
+    const walletResponse = await connectWallet();
+    setStatus(walletResponse.status);
+    setWallet(walletResponse.address);
+  };
 
+  const onUpdatePressed = async () => {
+    const { status } = await updateMessage(walletAddress, newMessage);
+    setStatus(status);
+  };
+
+  //the UI of our component
   return (
     <div className="max-w-lg mt-36 mx-auto text-center px-4">
       <Head>
-        <title>Solidity Next.js Starter</title>
-        <meta name="description" content="Interact with a simple smart contract from the client-side." />
+        <title>onchain</title>
+        <meta
+          name="description"
+          content="Interact with a simple smart contract from the client-side."
+        />
         <link rel="icon" href="/favicon.ico" />
       </Head>
+      <div id="container">
+        <h1 className="text-4xl font-semibold mb-8">
+          Send messages on chain :)
+        </h1>
+        <img id="logo" src="./public/onchainlogo.png"></img>
+        <button id="walletButton" onClick={connectWalletPressed}>
+          {walletAddress.length > 0 ? (
+            "Connected: " +
+            String(walletAddress).substring(0, 6) +
+            "..." +
+            String(walletAddress).substring(38)
+          ) : (
+            <span>Connect Wallet</span>
+          )}
+        </button>
 
-      <main className="space-y-8">
-        { ! process.env.NEXT_PUBLIC_GREETER_ADDRESS ? (
-            <p className="text-md">
-              Please add a value to the <pre>NEXT_PUBLIC_GREETER_ADDRESS</pre> environment variable.
-            </p>
-        ) : (
-          <>
-            <h1 className="text-4xl font-semibold mb-8">
-              Solidity Next.js Starter
-            </h1>
-            <div className="space-y-8">
-                <div className="flex flex-col space-y-4">
-                  <input
-                    className="border p-4 w-100 text-center"
-                    placeholder="A fetched greeting will show here"
-                    value={greeting}
-                    disabled
-                  />
-                  <button
-                      className="bg-blue-600 hover:bg-blue-700 text-white py-4 px-8 rounded-md w-full"
-                      onClick={fetchGreeting}
-                    >
-                      Fetch greeting from the blockchain
-                    </button>
-                </div>
-                <div className="space-y-8">
-                  <div className="flex flex-col space-y-4">
-                    <input
-                      className="border p-4 text-center"
-                      onChange={ e => setNewGreetingState(e.target.value)}
-                      placeholder="Write a new greeting"
-                      ref={newGreetingInputRef}
-                    />
-                    <button
-                      className="bg-blue-600 hover:bg-blue-700 text-white py-4 px-8 rounded-md"
-                      onClick={setGreeting}
-                    >
-                      Set new greeting on the blockchain
-                    </button>
-                    <div className="h-2">
-                      { newGreetingMessage && <span className="text-sm text-gray-500 italic">{newGreetingMessage}</span> }
-                    </div>
-                  </div>
-                </div>
-                <div className="h-4">
-                  { connectedWalletAddress && <p className="text-md">{connectedWalletAddress}</p> }
-                </div>
-            </div>
-          </>
-        ) }
-      </main>
+        <div className="space-y-8">
+          <div className="flex flex-col space-y-4">
+            <h2 style={{ paddingTop: "50px" }}>Current Message:</h2>
+            <p>{message}</p>
 
-      <footer className="mt-20">
-        <a
-          href="https://github.com/tomhirst/solidity-nextjs-starter/blob/main/README.md"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-blue-600 hover:text-blue-700"
-        >
-          Read the docs
-        </a>
-      </footer>
+            <h2 style={{ paddingTop: "18px" }}>New Message:</h2>
+
+            <input
+              type="text"
+              className="border p-4 w-100 text-center"
+              placeholder="Update the message in your smart contract."
+              onChange={e => setNewMessage(e.target.value)}
+              value={newMessage}
+            />
+            <p id="status">{status}</p>
+            <button
+              className="bg-blue-600 hover:bg-blue-700 text-white py-4 px-8 rounded-md w-full"
+              onClick={onUpdatePressed}
+            >
+              Update{" "}
+            </button>
+          </div>
+
+          <div className="flex flex-col space-y-4">
+            <input
+              type="text"
+              className="border p-4 w-100 text-center"
+              placeholder="Enter wallet address"
+              onChange={e => setWalletAddress(e.target.value)}
+              value={newWalletAddress}
+            />
+            Send a message to a wallet{" "}
+          </div>
+        </div>
+        <footer className="mt-20">
+          <a
+            href="https://github.com/tomhirst/solidity-nextjs-starter/blob/main/README.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 hover:text-blue-700"
+          >
+            Read the docs
+          </a>
+        </footer>
+      </div>
     </div>
-  )
-}
+  );
+};
+
+export default HelloWorld;
