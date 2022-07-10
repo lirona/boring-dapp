@@ -96,7 +96,7 @@ const HelloWorld = () => {
         <h1 className="text-4xl font-semibold mb-8">
           Send messages on chain :)
         </h1>
-        <img id="logo" src="./public/onchainlogo.png"></img>
+        <img id="logo" src="public/onchainlogo.png"></img>
         <button id="walletButton" onClick={connectWalletPressed}>
           {walletAddress.length > 0 ? (
             "Connected: " +
@@ -122,13 +122,6 @@ const HelloWorld = () => {
               onChange={e => setNewMessage(e.target.value)}
               value={newMessage}
             />
-            <p id="status">{status}</p>
-            <button
-              className="bg-blue-600 hover:bg-blue-700 text-white py-4 px-8 rounded-md w-full"
-              onClick={onUpdatePressed}
-            >
-              Update{" "}
-            </button>
           </div>
 
           <div className="flex flex-col space-y-4">
@@ -139,8 +132,15 @@ const HelloWorld = () => {
               onChange={e => setWalletAddress(e.target.value)}
               value={newWalletAddress}
             />
-            Send a message to a wallet{" "}
           </div>
+
+          <p id="status">{status}</p>
+          <button
+            className="bg-blue-600 hover:bg-blue-700 text-white py-4 px-8 rounded-md w-full"
+            onClick={onUpdatePressed}
+          >
+            Send message{" "}
+          </button>
         </div>
         <footer className="mt-20">
           <a
