@@ -23,10 +23,10 @@ contract SeedsOnEarth {
         QuestStatus status;
     }
 
-    event SponserQuest(uint256 indexed _questId, address indexed _token, address indexed _amount, string _description);
+    event SponserQuest(uint256 indexed _questId, address indexed _token, uint256 indexed _amount, string _description);
     event PickUpQuest(uint256 indexed _questId, address indexed _sender, string indexed _ipfsHash);
     event CompleteQuest(uint256 indexed _questId, address indexed _sender, string indexed _ipfsHash);
-    event reviewSubmission(uint256 indexed _questId, bool indexed _approve);
+    event ReviewSubmission(uint256 indexed _questId, bool indexed _approve);
     event RejectSubmission(uint256 indexed _questId);
     event ApproveSubmission(uint256 indexed _questId);
     event Withdraw(uint256 indexed _questId);
@@ -56,19 +56,20 @@ contract SeedsOnEarth {
         public 
         payable
     {
-        require(msg.value > 0 || (_token != address(0) && _amount > 0), "Quest must have value");
+        require(msg.value > 0 || (_tokenAddress != address(0) && _amount > 0), "Quest must have value");
         bool isEth_ = (msg.value > 0);
-        Quest quest = Quest({
+        Quest memory quest = Quest({
             sponser: msg.sender,
             isEth: isEth_,
-            token: IERC20(_token),
+            token: IERC20(_tokenAddress),
             amount: isEth_? msg.value : _amount,
             description: _description,
             timeToComplete: _timeToComplete,
             pickedUpHash: "",
             completedHash: "",
             user: address(0),
-            status: PENDING
+            pickUpTime : 0,
+            status: QuestStatus.PENDING
         });
 
         if (_amount > 0)
