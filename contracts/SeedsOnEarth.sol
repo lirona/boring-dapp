@@ -7,9 +7,9 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 contract SeedsOnEarth {
     using SafeERC20 for IERC20;
 
-    enum TaskStatus { PENDING, PICKEDUP, COMPLETED, DISMISSED, PAIDOUT }
+    enum QuestStatus { PENDING, PICKEDUP, COMPLETED, DISMISSED, PAIDOUT }
 
-    struct Task{
+    struct Quest{
         address sponser;
         bool isEth;
         IERC20 token;
@@ -20,18 +20,18 @@ contract SeedsOnEarth {
         string completedHash;
         address user;
         uint256 pickUpTime;
-        TaskStatus status;
+        QuestStatus status;
     }
 
-    event SponserTask(uint256 indexed _taskId, address indexed _token, address indexed _amount, string _description);
-    event PickUpTask(uint256 indexed _taskId, address indexed _sender, string indexed _ipfsHash);
-    event CompleteTask(uint256 indexed _taskId, address indexed _sender, string indexed _ipfsHash);
-    event reviewSubmission(uint256 indexed _taskId, bool indexed _approve);
-    event RejectSubmission(uint256 indexed _taskId);
-    event ApproveSubmission(uint256 indexed _taskId);
-    event Withdraw(uint256 indexed _taskId);
+    event SponserQuest(uint256 indexed _questId, address indexed _token, address indexed _amount, string _description);
+    event PickUpQuest(uint256 indexed _questId, address indexed _sender, string indexed _ipfsHash);
+    event CompleteQuest(uint256 indexed _questId, address indexed _sender, string indexed _ipfsHash);
+    event reviewSubmission(uint256 indexed _questId, bool indexed _approve);
+    event RejectSubmission(uint256 indexed _questId);
+    event ApproveSubmission(uint256 indexed _questId);
+    event Withdraw(uint256 indexed _questId);
 
-    Task[] public tasks;
+    Quest[] public quests;
 
     uint256 public constant WITHDRAW_PENDING_PERIOD = 604800;
     address public committee;
@@ -41,7 +41,14 @@ contract SeedsOnEarth {
         committee = _committee;
     }
 
-    function sponserTask(
+    /**
+    * @notice add a new quest, called by quest's sponser and deposits the quest's price
+    * @param _tokenAddress address of token to pay for quest, unless it's ETH
+    * @param _amount amount of token to deposit for completing the quest
+    * @param _description name of quest
+    * @param _timeToComplete time in seconds between picking up the quest until it must be completed
+    **/
+    function sponserQuest(
             address _tokenAddress, 
             uint256 _amount, 
             string memory _description, 
@@ -49,9 +56,9 @@ contract SeedsOnEarth {
         public 
         payable
     {
-        require(msg.value > 0 || (_token != address(0) && _amount > 0), "Task must have value");
+        require(msg.value > 0 || (_token != address(0) && _amount > 0), "Quest must have value");
         bool isEth_ = (msg.value > 0);
-        Task task = Task({
+        Quest quest = Quest({
             sponser: msg.sender,
             isEth: isEth_,
             token: IERC20(_token),
@@ -65,83 +72,117 @@ contract SeedsOnEarth {
         });
 
         if (_amount > 0)
-            task.token.safeTransferFrom(msg.sender, address(this), _amount);
+            quest.token.safeTransferFrom(msg.sender, address(this), _amount);
 
-        tasks.push(task);
+        quests.push(quest);
 
-        emit SponserTask(tasks.length - 1, _tokenAddress, task.amount, _description);
+        emit SponserQuest(quests.length - 1, _tokenAddress, quest.amount, _description);
     }
     
-    function pickUpTask(uint256 _taskId, string memory _ipfsHash) public {
-        Task storage task = tasks[_taskId];
-        require(task.status == TaskStatus.PENDING, "Task must be pending pick up");
-        task.pickedUpHash = _ipfsHash;
-        task.user = msg.sender;
-        task.status = TaskStatus.PICKEDUP;
-        task.pickUpTime = block.timestamp;
-        emit PickUpTask(_taskId, msg.sender, _ipfsHash);
+    /**
+    * @notice pick up a quest, called by user which then has `quest.timeToComplete` to complete it
+    * @param _questId id of quest
+    * @param _ipfsHash hash of before image/video of quest location
+    **/
+    function pickUpQuest(uint256 _questId, string memory _ipfsHash) public {
+        Quest storage quest = quests[_questId];
+        require(quest.status == QuestStatus.PENDING, "Quest must be pending pick up");
+        quest.pickedUpHash = _ipfsHash;
+        quest.user = msg.sender;
+        quest.status = QuestStatus.PICKEDUP;
+        quest.pickUpTime = block.timestamp;
+        emit PickUpQuest(_questId, msg.sender, _ipfsHash);
     }
   
-    function completeTask(uint256 _taskId, string memory _ipfsHash) public {
-        Task storage task = tasks[_taskId];
-        require(task.status == TaskStatus.PICKEDUP, "Task not picked up");
-        require(task.user == msg.sender, "Task picked up by other user");
-        require(block.timestamp - task.pickUpTime <= task.timeToComplete, "Time to complete task has passed");
-        task.completedHash = _ipfsHash;
-        task.status = TaskStatus.COMPLETED;
-        emit CompleteTask(_taskId, msg.sender, _ipfsHash);
+    /**
+    * @notice report completing a quest, called only by the user which picked up the quest, and before completing timeout
+    * @param _questId id of quest
+    * @param _ipfsHash hash of after image/video of quest location
+    **/
+    function completeQuest(uint256 _questId, string memory _ipfsHash) public {
+        Quest storage quest = quests[_questId];
+        require(quest.status == QuestStatus.PICKEDUP, "Quest not picked up");
+        require(quest.user == msg.sender, "Quest picked up by other user");
+        require(block.timestamp - quest.pickUpTime <= quest.timeToComplete, "Time to complete quest has passed");
+        quest.completedHash = _ipfsHash;
+        quest.status = QuestStatus.COMPLETED;
+        emit CompleteQuest(_questId, msg.sender, _ipfsHash);
     }
     
-    function _payOutTask(Task storage _task, bool _refund) private {
-        address to = _refund? _task.sponser : _task.user;
-        if (_task.isEth){
-                (bool success,) = to.call{value: _task.amount}("");
+    /**
+    * @dev payout the amount of quest to user or refund sponser
+    **/
+    function _payOutQuest(Quest storage _quest, bool _refund) private {
+        address to = _refund? _quest.sponser : _quest.user;
+        if (_quest.isEth){
+                (bool success,) = to.call{value: _quest.amount}("");
                 require(success, "Failed to send ETH");
             } else {
-                _task.token.safeTransfer(to, _task.amount);
+                _quest.token.safeTransfer(to, _quest.amount);
             }
-        _task.status = TaskStatus.PAIDOUT;
+        _quest.status = QuestStatus.PAIDOUT;
     }
 
-    function reviewSubmission(uint256 _taskId, bool _approve) public {
-        Task storage task = tasks[_taskId];
-        require(msg.sender == task.sponser, "Only task's sponser can review submission");
+    /**
+    * @notice sponser reviews submission of completed quest
+    * @param _questId id of quest
+    * @param _approve whether to approve the completion and pay out the user or dismiss it 
+    * (and pass to committee for final approval)
+    **/
+    function reviewSubmission(uint256 _questId, bool _approve) public {
+        Quest storage quest = quests[_questId];
+        require(msg.sender == quest.sponser, "Only quest's sponser can review submission");
+        require(quest.status == QuestStatus.COMPLETED, "Quest not completed");
         if (_approve) {
-            _payOutTask(task, false);
+            _payOutQuest(quest, false);
         } else {
-            task.status = TaskStatus.DISMISSED;
+            quest.status = QuestStatus.DISMISSED;
         }
-        emit ReviewSubmission(_taskId, _approve);
+        emit ReviewSubmission(_questId, _approve);
     }
 
-    function rejectSubmission(uint256 _taskId) public {
-        Task storage task = tasks[_taskId];
+    /**
+    * @notice after dismisal of quest completion by the sponser, or in case the timeout for completion had passed,
+    * the committe can reset the quest back to pending
+    * @param _questId id of quest
+    **/
+    function rejectSubmission(uint256 _questId) public {
+        Quest storage quest = quests[_questId];
         require(msg.sender == committee, "Only committee can reject submissions");
-        require(task.status == TaskStatus.DISMISSED || 
-            (task.status == TaskStatus.PICKEDUP && block.timestamp - task.pickUpTime > task.timeToComplete),
-             "Task can only be reset if it was dismissed by sponser or time to complete had passed");
-        task.pickedUpHash = "";
-        task.completedHash = "";
-        task.user = address(0);
-        task.status = TaskStatus.PENDING;
-        task.pickUpTime = 0;
-        emit RejectSubmission(_taskId);
+        require(quest.status == QuestStatus.DISMISSED || 
+            (quest.status == QuestStatus.PICKEDUP && block.timestamp - quest.pickUpTime > quest.timeToComplete),
+             "Quest can only be reset if it was dismissed by sponser or time to complete had passed");
+        quest.pickedUpHash = "";
+        quest.completedHash = "";
+        quest.user = address(0);
+        quest.status = QuestStatus.PENDING;
+        quest.pickUpTime = 0;
+        emit RejectSubmission(_questId);
     }
 
-    function approveSubmission(uint256 _taskId) public {
-        Task storage task = tasks[_taskId];
-        require(task.status == TaskStatus.DISMISSED, "Task was not dismissed by sponser");
-        require(msg.sender == committee, "Only committee can approve submissions");
-        _payOutTask(task, false);
-        emit ApproveSubmission(_taskId);
+    /**
+    * @notice after dismisal of quest completion by the sponser, the committe can choose to still 
+    * approve the completion and pay out the user
+    * @param _questId id of quest
+    **/
+    function approveSubmission(uint256 _questId) public {
+        Quest storage quest = quests[_questId];
+        require(quest.status == QuestStatus.DISMISSED, "Quest was not dismissed by sponser");
+        require(msg.sender == committee, "Only committee can approve submissions after dismisal");
+        _payOutQuest(quest, false);
+        emit ApproveSubmission(_questId);
     }
 
-    function withdraw(uint256 _taskId) public {
-        Task storage task = tasks[_taskId];
-        require(msg.sender == task.sponser, "Only task's sponser can request to withdraw");
-        require(task.status == TaskStatus.PENDING, "Withdraw can be done only when task is pending");
-        _payOutTask(task, true);
-        emit Withdraw(_taskId);
+    /**
+    * @notice quest sponser can ask to withdraw his quest and get refunded, only in the case the quest is pending pick up
+    * @param _questId id of quest
+    **/
+    function withdraw(uint256 _questId) public {
+        Quest storage quest = quests[_questId];
+        require(msg.sender == quest.sponser, "Only quest's sponser can request to withdraw");
+        require(quest.status == QuestStatus.PENDING, "Withdraw can be done only when quest is pending");
+        _payOutQuest(quest, true);
+        emit Withdraw(_questId);
     }
 
     receive() external payable {}
