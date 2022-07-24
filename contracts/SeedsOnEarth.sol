@@ -42,11 +42,11 @@ contract SeedsOnEarth {
     }
 
     /**
-    * @notice add a new quest, called by quest's sponser and deposits the quest's price
+    * @notice add a new quest, called by quest's sponser and deposits the quest's price (enabling financial access, local economies and global ecologies)
     * @param _tokenAddress address of token to pay for quest, unless it's ETH
     * @param _amount amount of token to deposit for completing the quest
     * @param _description name of quest
-    * @param _timeToComplete time in seconds between picking up the quest until it must be completed
+    * @param _timeToComplete time in seconds between picking up the quest until it must be completed (ensuring lack of fraud)
     **/
     function sponserQuest(
             address _tokenAddress, 
@@ -83,7 +83,7 @@ contract SeedsOnEarth {
     /**
     * @notice pick up a quest, called by user which then has `quest.timeToComplete` to complete it
     * @param _questId id of quest
-    * @param _ipfsHash hash of before image/video of quest location
+    * @param _ipfsHash hash of before image/video of quest location (trustworthiness)
     **/
     function pickUpQuest(uint256 _questId, string memory _ipfsHash) public {
         Quest storage quest = quests[_questId];
@@ -98,7 +98,7 @@ contract SeedsOnEarth {
     /**
     * @notice report completing a quest, called only by the user which picked up the quest, and before completing timeout
     * @param _questId id of quest
-    * @param _ipfsHash hash of after image/video of quest location
+    * @param _ipfsHash hash of after image/video of quest location (trustworthiness)
     **/
     function completeQuest(uint256 _questId, string memory _ipfsHash) public {
         Quest storage quest = quests[_questId];
@@ -111,7 +111,7 @@ contract SeedsOnEarth {
     }
     
     /**
-    * @dev payout the amount of quest to user or refund sponser
+    * @dev payout the amount of quest to user or refund sponser (enabling financial access to local communities and ensuring fairness)
     **/
     function _payOutQuest(Quest storage _quest, bool _refund) private {
         address to = _refund? _quest.sponser : _quest.user;
@@ -127,7 +127,7 @@ contract SeedsOnEarth {
     /**
     * @notice sponser reviews submission of completed quest
     * @param _questId id of quest
-    * @param _approve whether to approve the completion and pay out the user or dismiss it 
+    * @param _approve whether to approve the completion and pay out the user or dismiss it (right to appeal and fairness)
     * (and pass to committee for final approval)
     **/
     function reviewSubmission(uint256 _questId, bool _approve) public {
@@ -163,7 +163,7 @@ contract SeedsOnEarth {
 
     /**
     * @notice after dismisal of quest completion by the sponser, the committe can choose to still 
-    * approve the completion and pay out the user
+    * approve the completion and pay out the user (right to appeal and fairness)
     * @param _questId id of quest
     **/
     function approveSubmission(uint256 _questId) public {
