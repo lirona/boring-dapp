@@ -42,11 +42,13 @@ contract SeedsOnEarth {
     }
 
     /**
-    * @notice add a new quest, called by quest's sponser and deposits the quest's price (enabling financial access, local economies and global ecologies)
+    * @notice add a new quest, called by quest's sponser and deposits the quest's price 
+    * (enabling financial access, local economies and global ecologies)
     * @param _tokenAddress address of token to pay for quest, unless it's ETH
     * @param _amount amount of token to deposit for completing the quest
     * @param _description name of quest
-    * @param _timeToComplete time in seconds between picking up the quest until it must be completed (ensuring lack of fraud)
+    * @param _timeToComplete time in seconds between picking up the quest until it must be completed 
+    * (ensuring lack of fraud)
     **/
     function sponserQuest(
             address _tokenAddress, 
@@ -111,7 +113,8 @@ contract SeedsOnEarth {
     }
     
     /**
-    * @dev payout the amount of quest to user or refund sponser (enabling financial access to local communities and ensuring fairness)
+    * @dev payout the amount of quest to user or refund sponser
+    * (enabling financial access to local communities and ensuring fairness)
     **/
     function _payOutQuest(Quest storage _quest, bool _refund) private {
         address to = _refund? _quest.sponser : _quest.user;
