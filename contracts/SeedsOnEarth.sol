@@ -14,11 +14,12 @@ contract SeedsOnEarth {
         bool isEth;
         IERC20 token;
         uint256 amount;
-        string description;
         uint256 timeToComplete;
+        string infoHash;
         string pickedUpHash;
         string completedHash;
-        address user;
+        uint256 numOfUsers;
+        address[] users;
         uint256 pickUpTime;
         QuestStatus status;
     }
@@ -51,12 +52,14 @@ contract SeedsOnEarth {
     * (ensuring lack of fraud)
     **/
     function sponserQuest(
-            address _tokenAddress, 
-            uint256 _amount, 
-            string memory _description, 
-            uint _timeToComplete) 
-        public 
-        payable
+        address _tokenAddress, 
+        uint256 _amount, 
+        uint256 _numOfUsers,
+        uint _timeToComplete,
+        string _ipfsHash
+        ) 
+    public 
+    payable
     {
         require(msg.value > 0 || (_tokenAddress != address(0) && _amount > 0), "Quest must have value");
         bool isEth_ = (msg.value > 0);
@@ -65,11 +68,12 @@ contract SeedsOnEarth {
             isEth: isEth_,
             token: IERC20(_tokenAddress),
             amount: isEth_? msg.value : _amount,
-            description: _description,
             timeToComplete: _timeToComplete,
+            infoHash: _ipfsHash,
             pickedUpHash: "",
             completedHash: "",
-            user: address(0),
+            _numOfUsers: _numOfUsers,
+            users: new address[],
             pickUpTime : 0,
             status: QuestStatus.PENDING
         });
@@ -91,40 +95,28 @@ contract SeedsOnEarth {
         Quest storage quest = quests[_questId];
         require(quest.status == QuestStatus.PENDING, "Quest must be pending pick up");
         quest.pickedUpHash = _ipfsHash;
-        quest.user = msg.sender;
-        quest.status = QuestStatus.PICKEDUP;
-        quest.pickUpTime = block.timestamp;
+        quest.users.push(msg.sender);
+        if (quest.users.length == quest.numOfUsers) {
+            quest.status = QuestStatus.PICKEDUP;
+            quest.pickUpTime = block.timestamp;
+        }
         emit PickUpQuest(_questId, msg.sender, _ipfsHash);
     }
   
     /**
-    * @notice report completing a quest, called only by the user which picked up the quest, and before completing timeout
+    * @notice report completing a quest, called only by one of the users which picked up the quest,
+    * and before completing timeout
     * @param _questId id of quest
     * @param _ipfsHash hash of after image/video of quest location (trustworthiness)
     **/
     function completeQuest(uint256 _questId, string memory _ipfsHash) public {
         Quest storage quest = quests[_questId];
         require(quest.status == QuestStatus.PICKEDUP, "Quest not picked up");
-        require(quest.user == msg.sender, "Quest picked up by other user");
+        require(_addressInQuestUsers(msg.sender, quest), "Must be reported by one of the users that picked up this quest");
         require(block.timestamp - quest.pickUpTime <= quest.timeToComplete, "Time to complete quest has passed");
         quest.completedHash = _ipfsHash;
         quest.status = QuestStatus.COMPLETED;
         emit CompleteQuest(_questId, msg.sender, _ipfsHash);
-    }
-    
-    /**
-    * @dev payout the amount of quest to user or refund sponser
-    * (enabling financial access to local communities and ensuring fairness)
-    **/
-    function _payOutQuest(Quest storage _quest, bool _refund) private {
-        address to = _refund? _quest.sponser : _quest.user;
-        if (_quest.isEth){
-                (bool success,) = to.call{value: _quest.amount}("");
-                require(success, "Failed to send ETH");
-            } else {
-                _quest.token.safeTransfer(to, _quest.amount);
-            }
-        _quest.status = QuestStatus.PAIDOUT;
     }
 
     /**
@@ -158,7 +150,7 @@ contract SeedsOnEarth {
              "Quest can only be reset if it was dismissed by sponser or time to complete had passed");
         quest.pickedUpHash = "";
         quest.completedHash = "";
-        quest.user = address(0);
+        quest.users = new address[];
         quest.status = QuestStatus.PENDING;
         quest.pickUpTime = 0;
         emit RejectSubmission(_questId);
@@ -189,5 +181,31 @@ contract SeedsOnEarth {
         emit Withdraw(_questId);
     }
 
+     /**
+    * @dev payout the amount of quest to users or refund sponser
+    * (enabling financial access to local communities and ensuring fairness)
+    **/
+    function _payOutQuest(Quest storage _quest, bool _refund) private {
+        address[] to = _refund? [_quest.sponser] : _quest.users;
+        uint256 amount = _quest.amount / to.length;
+        for (uint i = 0; i < to.length; i++) {
+            if (_quest.isEth){
+                (bool success,) = to[i].call{value: amount}("");
+                require(success, "Failed to send ETH");
+            } else {
+                _quest.token.safeTransfer(to[i], amount);
+            }
+        }
+        _quest.status = QuestStatus.PAIDOUT;
+    }
+
+    function _addressInQuestUsers(address _add, Quest storage _quest) private view returns (bool) {
+        for (uint i = 0; i < _quest.users.length; i++) {
+            if (_quest.users[i] == _add)
+                return true;
+        }
+        return false;
+    }
+        
     receive() external payable {}
 }
