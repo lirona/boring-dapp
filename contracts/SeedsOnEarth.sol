@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 contract SeedsOnEarth {
     using SafeERC20 for IERC20;
 
-    enum QuestStatus { PENDING, PICKEDUP, COMPLETED, DISMISSED, PAIDOUT }
+    enum QuestStatus { PENDING, READYTOPICKUP, PICKEDUP, COMPLETED, DISMISSED, PAIDOUT }
 
     struct Quest{
         address sponser;
@@ -25,6 +25,7 @@ contract SeedsOnEarth {
     }
 
     event SponserQuest(uint256 indexed _questId, address indexed _token, uint256 indexed _amount, string _description);
+    event JoinQuest(uint256 indexed _questId, address indexed _sender);
     event PickUpQuest(uint256 indexed _questId, address indexed _sender, string indexed _ipfsHash);
     event CompleteQuest(uint256 indexed _questId, address indexed _sender, string indexed _ipfsHash);
     event ReviewSubmission(uint256 indexed _questId, bool indexed _approve);
@@ -88,20 +89,32 @@ contract SeedsOnEarth {
     }
 
     /**
+    * @notice join a quest, called by user to join a quest
+    * @param _questId id of quest
+    **/
+    function joinQuest(uint256 _questId) public {
+        Quest storage quest = quests[_questId];
+        require(quest.status == QuestStatus.PENDING, "Quest must be pending to join");
+        quest.users.push(msg.sender);
+        usersQuestsMapping[msg.sender].push(_questId);
+        if (quest.users.length == quest.numOfUsers) {
+            quest.status = QuestStatus.READYTOPICKUP;
+        }
+        emit JoinQuest(_questId, msg.sender);
+    }
+
+    /**
     * @notice pick up a quest, called by user which then has `quest.timeToComplete` to complete it
     * @param _questId id of quest
     * @param _ipfsHash hash of before image/video of quest location (trustworthiness)
     **/
     function pickUpQuest(uint256 _questId, string memory _ipfsHash) public {
         Quest storage quest = quests[_questId];
-        require(quest.status == QuestStatus.PENDING, "Quest must be pending pick up");
+        require(quest.status == QuestStatus.READYTOPICKUP, "Quest must be ready to pick up");
+        require(_addressInQuestUsers(msg.sender, quest), "Must be picked up by one of the users that joined this quest");
         quest.pickedUpHash = _ipfsHash;
-        quest.users.push(msg.sender);
-        usersQuestsMapping[msg.sender].push(_questId);
-        if (quest.users.length == quest.numOfUsers) {
-            quest.status = QuestStatus.PICKEDUP;
-            quest.pickUpTime = block.timestamp;
-        }
+        quest.status = QuestStatus.PICKEDUP;
+        quest.pickUpTime = block.timestamp;
         emit PickUpQuest(_questId, msg.sender, _ipfsHash);
     }
   
@@ -178,7 +191,7 @@ contract SeedsOnEarth {
     function withdraw(uint256 _questId) public {
         Quest storage quest = quests[_questId];
         require(msg.sender == quest.sponser, "Only quest's sponser can request to withdraw");
-        require(quest.status == QuestStatus.PENDING, "Withdraw can be done only when quest is pending");
+        require(quest.status == QuestStatus.PENDING || quest.status == QuestStatus.READYTOPICKUP, "Withdraw can be done only when quest is not yet picked up");
         _payOutQuest(quest, true);
         emit Withdraw(_questId);
     }
