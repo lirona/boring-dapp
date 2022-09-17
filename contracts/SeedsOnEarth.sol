@@ -23,7 +23,6 @@ contract SeedsOnEarth {
         address[] users;
         uint256 createdTime;
         uint256 pickUpTime;
-        QuestStatus status;
     }
 
     event CreateQuest(
@@ -44,7 +43,12 @@ contract SeedsOnEarth {
     event Withdraw(uint256 indexed _questId);
 
     Quest[] public quests;
+
+    // user => questIds
     mapping(address => uint[]) public usersQuestsMapping;
+
+    // questId => QuestStatus
+    mapping(uint256 => QuestStatus) public questStatuses;
 
     uint256 public constant WITHDRAW_PENDING_PERIOD = 7 * 24 * 60 * 60; // 7 days
     uint256 public constant SPONSOR_PENDING_PERIOD = 30 * 24 * 60 * 60; // 30 days
@@ -98,14 +102,14 @@ contract SeedsOnEarth {
             numOfUsers: _numOfUsers,
             users: new address[](0),
             createdTime: block.timestamp,
-            pickUpTime : 0,
-            status: status
+            pickUpTime : 0
         });
 
         if (_amount > 0)
             quest.token.safeTransferFrom(msg.sender, address(this), _amount);
 
         quests.push(quest);
+        questStatuses[quests.length - 1] = status;
 
         emit CreateQuest(quests.length - 1, _tokenAddress, quest.amount, _numOfUsers, _timeToComplete, _ipfsHash);
     }
@@ -119,7 +123,7 @@ contract SeedsOnEarth {
      */
     function sponsorQuest(uint256 _questId, address _tokenAddress, uint256 _amount) public payable {
         Quest storage quest = quests[_questId];
-        require(quest.status == QuestStatus.CREATED, "Quest already sponsored");
+        require(questStatuses[_questId] == QuestStatus.CREATED, "Quest already sponsored");
         require(block.timestamp - quest.createdTime < SPONSOR_PENDING_PERIOD, "Sponsor period expired");
         
         bool isCelo_ = (msg.value > 0);
@@ -127,7 +131,7 @@ contract SeedsOnEarth {
         if (_amount > 0)
             quest.token.safeTransferFrom(msg.sender, address(this), _amount);
 
-        quest.status = QuestStatus.PENDING;
+        questStatuses[_questId] = QuestStatus.PENDING;
         quest.sponsor = msg.sender;
         quest.isCelo = isCelo_;
         quest.amount = isCelo_? msg.value : _amount;
@@ -142,11 +146,11 @@ contract SeedsOnEarth {
     **/
     function joinQuest(uint256 _questId) public {
         Quest storage quest = quests[_questId];
-        require(quest.status == QuestStatus.PENDING, "Quest must be pending to join");
+        require(questStatuses[_questId] == QuestStatus.PENDING, "Quest must be pending to join");
         quest.users.push(msg.sender);
         usersQuestsMapping[msg.sender].push(_questId);
         if (quest.users.length == quest.numOfUsers) {
-            quest.status = QuestStatus.READYTOPICKUP;
+            questStatuses[_questId] = QuestStatus.READYTOPICKUP;
         }
         emit JoinQuest(_questId, msg.sender);
     }
@@ -159,10 +163,10 @@ contract SeedsOnEarth {
     **/
     function pickUpQuest(uint256 _questId, string memory _ipfsHash) public {
         Quest storage quest = quests[_questId];
-        require(quest.status == QuestStatus.READYTOPICKUP, "Quest must be ready to pick up");
+        require(questStatuses[_questId] == QuestStatus.READYTOPICKUP, "Quest must be ready to pick up");
         require(_addressInQuestUsers(msg.sender, quest), "Must be picked up by one of the users that joined this quest");
         quest.pickedUpHash = _ipfsHash;
-        quest.status = QuestStatus.PICKEDUP;
+        questStatuses[_questId] = QuestStatus.PICKEDUP;
         quest.pickUpTime = block.timestamp;
         emit PickUpQuest(_questId, msg.sender, _ipfsHash);
     }
@@ -175,11 +179,11 @@ contract SeedsOnEarth {
     **/
     function completeQuest(uint256 _questId, string memory _ipfsHash) public {
         Quest storage quest = quests[_questId];
-        require(quest.status == QuestStatus.PICKEDUP, "Quest not picked up");
+        require(questStatuses[_questId] == QuestStatus.PICKEDUP, "Quest not picked up");
         require(_addressInQuestUsers(msg.sender, quest), "Must be reported by one of the users that picked up this quest");
         require(block.timestamp - quest.pickUpTime <= quest.timeToComplete, "Time to complete quest has passed");
         quest.completedHash = _ipfsHash;
-        quest.status = QuestStatus.COMPLETED;
+        questStatuses[_questId] = QuestStatus.COMPLETED;
         emit CompleteQuest(_questId, msg.sender, _ipfsHash);
     }
 
@@ -192,11 +196,11 @@ contract SeedsOnEarth {
     function reviewSubmission(uint256 _questId, bool _approve) public {
         Quest storage quest = quests[_questId];
         require(msg.sender == quest.creator, "Only quest's creator can review submission");
-        require(quest.status == QuestStatus.COMPLETED, "Quest not completed");
+        require(questStatuses[_questId] == QuestStatus.COMPLETED, "Quest not completed");
         if (_approve) {
             _payOutQuest(quest, false);
         } else {
-            quest.status = QuestStatus.DISMISSED;
+            questStatuses[_questId] = QuestStatus.DISMISSED;
         }
         emit ReviewSubmission(_questId, _approve);
     }
@@ -209,13 +213,13 @@ contract SeedsOnEarth {
     function rejectSubmission(uint256 _questId) public {
         Quest storage quest = quests[_questId];
         require(msg.sender == committee, "Only committee can reject submissions");
-        require(quest.status == QuestStatus.DISMISSED || 
-            (quest.status == QuestStatus.PICKEDUP && block.timestamp - quest.pickUpTime > quest.timeToComplete),
+        require(questStatuses[_questId] == QuestStatus.DISMISSED || 
+            (questStatuses[_questId] == QuestStatus.PICKEDUP && block.timestamp - quest.pickUpTime > quest.timeToComplete),
              "Quest can only be reset if it was dismissed by creator or time to complete had passed");
         quest.pickedUpHash = "";
         quest.completedHash = "";
         quest.users = new address[](0);
-        quest.status = QuestStatus.PENDING;
+        questStatuses[_questId] = QuestStatus.PENDING;
         quest.pickUpTime = 0;
         emit RejectSubmission(_questId);
     }
@@ -227,7 +231,7 @@ contract SeedsOnEarth {
     **/
     function approveSubmission(uint256 _questId) public {
         Quest storage quest = quests[_questId];
-        require(quest.status == QuestStatus.DISMISSED, "Quest was not dismissed by creator");
+        require(questStatuses[_questId] == QuestStatus.DISMISSED, "Quest was not dismissed by creator");
         require(msg.sender == committee, "Only committee can approve submissions after dismisal");
         _payOutQuest(quest, false);
         emit ApproveSubmission(_questId);
@@ -241,7 +245,7 @@ contract SeedsOnEarth {
     function withdraw(uint256 _questId) public {
         Quest storage quest = quests[_questId];
         require(msg.sender == quest.sponsor, "Only quest's sponsor can request to withdraw");
-        require(quest.status == QuestStatus.PENDING || quest.status == QuestStatus.READYTOPICKUP, "Withdraw can be done only when quest is not yet picked up");
+        require(questStatuses[_questId] == QuestStatus.PENDING || questStatuses[_questId] == QuestStatus.READYTOPICKUP, "Withdraw can be done only when quest is not yet picked up");
         _payOutQuest(quest, true);
         emit Withdraw(_questId);
     }
