@@ -79,7 +79,7 @@ contract SeedsOnEarth {
     payable
     {
         QuestStatus status;
-        if (msg.value > 0 || (_tokenAddress != address(0) && _amount > 0) {
+        if (msg.value > 0 || (_tokenAddress != address(0) && _amount > 0)){
             status = QuestStatus.PENDING;
         } else {
             status = QuestStatus.CREATED;
@@ -117,7 +117,7 @@ contract SeedsOnEarth {
      * @param _tokenAddress address of token to pay for quest, unless it's CELO transfered with msg.value
      * @param _amount amount of token to deposit for the quest's bounty
      */
-    function sponsorQuest(_questId, address _tokenAddress, uint256 _amount) public payable {
+    function sponsorQuest(uint256 _questId, address _tokenAddress, uint256 _amount) public payable {
         Quest storage quest = quests[_questId];
         require(quest.status == QuestStatus.CREATED, "Quest already sponsored");
         require(block.timestamp - quest.createdTime < SPONSOR_PENDING_PERIOD, "Sponsor period expired");
@@ -131,9 +131,9 @@ contract SeedsOnEarth {
         quest.sponsor = msg.sender;
         quest.isCelo = isCelo_;
         quest.amount = isCelo_? msg.value : _amount;
-        quest._tokenAddress = _tokenAddress;
+        quest.token = IERC20(_tokenAddress);
 
-        emit SponserQuest(_questId, _tokenAddress, _amount);
+        emit SponsorQuest(_questId, _tokenAddress, _amount);
     }
 
     /**
@@ -259,12 +259,13 @@ contract SeedsOnEarth {
             for (uint i = 0; i < userCount; i++) {
                 _payUser(_quest.users[i], _quest, amount);
             }
+        }
     }
 
     function _payUser(address _user, Quest storage _quest, uint256 amount) private {
-        if (_quest.isEth) {
+        if (_quest.isCelo) {
             (bool success, ) = _user.call{value: amount}("");
-            require(success, "Failed to send ETH");
+            require(success, "Failed to send CELO");
         } else {
             _quest.token.safeTransfer(_user, amount);
         }
