@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 contract SeedsOnEarth {
     using SafeERC20 for IERC20;
 
-    enum QuestStatus { PENDING, PICKEDUP, COMPLETED, DISMISSED, PAIDOUT }
+    enum QuestStatus { PENDING, READYTOPICKUP, PICKEDUP, COMPLETED, DISMISSED, PAIDOUT }
 
     struct Quest{
         address sponser;
@@ -25,6 +25,7 @@ contract SeedsOnEarth {
     }
 
     event SponserQuest(uint256 indexed _questId, address indexed _token, uint256 indexed _amount, string _description);
+    event JoinQuest(uint256 indexed _questId, address indexed _sender);
     event PickUpQuest(uint256 indexed _questId, address indexed _sender, string indexed _ipfsHash);
     event CompleteQuest(uint256 indexed _questId, address indexed _sender, string indexed _ipfsHash);
     event ReviewSubmission(uint256 indexed _questId, bool indexed _approve);
@@ -33,6 +34,7 @@ contract SeedsOnEarth {
     event Withdraw(uint256 indexed _questId);
 
     Quest[] public quests;
+    mapping(address => uint[]) public usersQuestsMapping;
 
     uint256 public constant WITHDRAW_PENDING_PERIOD = 604800;
     address public committee;
@@ -47,7 +49,7 @@ contract SeedsOnEarth {
     * (enabling financial access, local economies and global ecologies)
     * @param _tokenAddress address of token to pay for quest, unless it's ETH
     * @param _amount amount of token to deposit for completing the quest
-    * @param _description name of quest
+    * @param _ipfsHash IPFS hash of quest details
     * @param _timeToComplete time in seconds between picking up the quest until it must be completed 
     * (ensuring lack of fraud)
     **/
@@ -56,7 +58,7 @@ contract SeedsOnEarth {
         uint256 _amount, 
         uint256 _numOfUsers,
         uint _timeToComplete,
-        string _ipfsHash
+        string calldata _ipfsHash
         ) 
     public 
     payable
@@ -72,8 +74,8 @@ contract SeedsOnEarth {
             infoHash: _ipfsHash,
             pickedUpHash: "",
             completedHash: "",
-            _numOfUsers: _numOfUsers,
-            users: new address[],
+            numOfUsers: _numOfUsers,
+            users: new address[](0),
             pickUpTime : 0,
             status: QuestStatus.PENDING
         });
@@ -83,9 +85,24 @@ contract SeedsOnEarth {
 
         quests.push(quest);
 
-        emit SponserQuest(quests.length - 1, _tokenAddress, quest.amount, _description);
+        emit SponserQuest(quests.length - 1, _tokenAddress, quest.amount, _ipfsHash);
     }
-    
+
+    /**
+    * @notice join a quest, called by user to join a quest
+    * @param _questId id of quest
+    **/
+    function joinQuest(uint256 _questId) public {
+        Quest storage quest = quests[_questId];
+        require(quest.status == QuestStatus.PENDING, "Quest must be pending to join");
+        quest.users.push(msg.sender);
+        usersQuestsMapping[msg.sender].push(_questId);
+        if (quest.users.length == quest.numOfUsers) {
+            quest.status = QuestStatus.READYTOPICKUP;
+        }
+        emit JoinQuest(_questId, msg.sender);
+    }
+
     /**
     * @notice pick up a quest, called by user which then has `quest.timeToComplete` to complete it
     * @param _questId id of quest
@@ -93,13 +110,11 @@ contract SeedsOnEarth {
     **/
     function pickUpQuest(uint256 _questId, string memory _ipfsHash) public {
         Quest storage quest = quests[_questId];
-        require(quest.status == QuestStatus.PENDING, "Quest must be pending pick up");
+        require(quest.status == QuestStatus.READYTOPICKUP, "Quest must be ready to pick up");
+        require(_addressInQuestUsers(msg.sender, quest), "Must be picked up by one of the users that joined this quest");
         quest.pickedUpHash = _ipfsHash;
-        quest.users.push(msg.sender);
-        if (quest.users.length == quest.numOfUsers) {
-            quest.status = QuestStatus.PICKEDUP;
-            quest.pickUpTime = block.timestamp;
-        }
+        quest.status = QuestStatus.PICKEDUP;
+        quest.pickUpTime = block.timestamp;
         emit PickUpQuest(_questId, msg.sender, _ipfsHash);
     }
   
@@ -150,7 +165,7 @@ contract SeedsOnEarth {
              "Quest can only be reset if it was dismissed by sponser or time to complete had passed");
         quest.pickedUpHash = "";
         quest.completedHash = "";
-        quest.users = new address[];
+        quest.users = new address[](0);
         quest.status = QuestStatus.PENDING;
         quest.pickUpTime = 0;
         emit RejectSubmission(_questId);
@@ -176,7 +191,7 @@ contract SeedsOnEarth {
     function withdraw(uint256 _questId) public {
         Quest storage quest = quests[_questId];
         require(msg.sender == quest.sponser, "Only quest's sponser can request to withdraw");
-        require(quest.status == QuestStatus.PENDING, "Withdraw can be done only when quest is pending");
+        require(quest.status == QuestStatus.PENDING || quest.status == QuestStatus.READYTOPICKUP, "Withdraw can be done only when quest is not yet picked up");
         _payOutQuest(quest, true);
         emit Withdraw(_questId);
     }
@@ -186,17 +201,25 @@ contract SeedsOnEarth {
     * (enabling financial access to local communities and ensuring fairness)
     **/
     function _payOutQuest(Quest storage _quest, bool _refund) private {
-        address[] to = _refund? [_quest.sponser] : _quest.users;
-        uint256 amount = _quest.amount / to.length;
-        for (uint i = 0; i < to.length; i++) {
-            if (_quest.isEth){
-                (bool success,) = to[i].call{value: amount}("");
-                require(success, "Failed to send ETH");
-            } else {
-                _quest.token.safeTransfer(to[i], amount);
+        if (_refund) {
+            _payUser(_quest.sponser, _quest, _quest.amount);
+        } else {
+            uint userCount = _quest.users.length;
+            uint256 amount = _quest.amount / userCount;
+            for (uint i = 0; i < userCount; i++) {
+                _payUser(_quest.users[i], _quest, amount);
             }
         }
         _quest.status = QuestStatus.PAIDOUT;
+    }
+
+    function _payUser(address _user, Quest storage _quest, uint256 amount) private {
+        if (_quest.isEth) {
+            (bool success, ) = _user.call{value: amount}("");
+            require(success, "Failed to send ETH");
+        } else {
+            _quest.token.safeTransfer(_user, amount);
+        }
     }
 
     function _addressInQuestUsers(address _add, Quest storage _quest) private view returns (bool) {
@@ -205,6 +228,14 @@ contract SeedsOnEarth {
                 return true;
         }
         return false;
+    }
+
+    function getQuests() public view returns (Quest[] memory) {
+        return quests;
+    }
+
+    function getQuestsForUser(address _user) public view returns (uint[] memory) {
+        return usersQuestsMapping[_user];
     }
         
     receive() external payable {}
