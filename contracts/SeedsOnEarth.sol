@@ -221,13 +221,8 @@ contract SeedsOnEarth {
         return quests;
     }
 
-    function getQuestsForUser(address _user) public view returns (Quest[] memory) {
-        uint[] memory questIds = usersQuestsMapping[_user];
-        Quest[] memory questsForUser = new Quest[](questIds.length);
-        for (uint i = 0; i < questIds.length; i++) {
-            questsForUser[i] = quests[questIds[i]];
-        }
-        return questsForUser;
+    function getQuestsForUser(address _user) public view returns (uint[] memory) {
+        return usersQuestsMapping[_user];
     }
         
     receive() external payable {}
