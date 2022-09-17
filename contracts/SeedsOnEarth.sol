@@ -7,11 +7,12 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 contract SeedsOnEarth {
     using SafeERC20 for IERC20;
 
-    enum QuestStatus { PENDING, PICKEDUP, COMPLETED, DISMISSED, PAIDOUT }
+    enum QuestStatus { CREATED, PENDING, PICKEDUP, COMPLETED, DISMISSED, PAIDOUT }
 
     struct Quest{
-        address sponser;
-        bool isEth;
+        address creator;
+        address sponsor;
+        bool isCelo;
         IERC20 token;
         uint256 amount;
         uint256 timeToComplete;
@@ -20,11 +21,20 @@ contract SeedsOnEarth {
         string completedHash;
         uint256 numOfUsers;
         address[] users;
+        uint256 createdTime;
         uint256 pickUpTime;
         QuestStatus status;
     }
 
-    event SponserQuest(uint256 indexed _questId, address indexed _token, uint256 indexed _amount, string _description);
+    event CreateQuest(
+        uint256 indexed _questId, 
+        address indexed _token, 
+        uint256 indexed _amount, 
+        uint256 _numOfUsers, 
+        uint256 _timeToComplete, 
+        string _ipfsHash
+    );
+    event SponsorQuest(uint256 indexed _questId, address indexed _tokenAddress, uint256 indexed amount);
     event PickUpQuest(uint256 indexed _questId, address indexed _sender, string indexed _ipfsHash);
     event CompleteQuest(uint256 indexed _questId, address indexed _sender, string indexed _ipfsHash);
     event ReviewSubmission(uint256 indexed _questId, bool indexed _approve);
@@ -34,7 +44,9 @@ contract SeedsOnEarth {
 
     Quest[] public quests;
 
-    uint256 public constant WITHDRAW_PENDING_PERIOD = 604800;
+    uint256 public constant WITHDRAW_PENDING_PERIOD = 7 * 24 * 60 * 60; // 7 days
+    uint256 public constant SPONSOR_PENDING_PERIOD = 30 * 24 * 60 * 60; // 30 days
+
     address public committee;
 
     constructor(address _committee)
@@ -43,7 +55,7 @@ contract SeedsOnEarth {
     }
 
     /**
-    * @notice add a new quest, called by quest's sponser and deposits the quest's price 
+    * @notice add a new quest, called by quest's creator and deposits the quest's price 
     * (enabling financial access, local economies and global ecologies)
     * @param _tokenAddress address of token to pay for quest, unless it's ETH
     * @param _amount amount of token to deposit for completing the quest
@@ -51,7 +63,7 @@ contract SeedsOnEarth {
     * @param _timeToComplete time in seconds between picking up the quest until it must be completed 
     * (ensuring lack of fraud)
     **/
-    function sponserQuest(
+    function createQuest(
         address _tokenAddress, 
         uint256 _amount, 
         uint256 _numOfUsers,
@@ -61,21 +73,28 @@ contract SeedsOnEarth {
     public 
     payable
     {
-        require(msg.value > 0 || (_tokenAddress != address(0) && _amount > 0), "Quest must have value");
-        bool isEth_ = (msg.value > 0);
+        QuestStatus status;
+        if (msg.value > 0 || (_tokenAddress != address(0) && _amount > 0) {
+            status = QuestStatus.PENDING;
+        } else {
+            status = QuestStatus.CREATED;
+        }
+        bool isCelo_ = (msg.value > 0);
         Quest memory quest = Quest({
-            sponser: msg.sender,
-            isEth: isEth_,
+            creator: msg.sender,
+            sponsor: status == QuestStatus.PENDING ? msg.sender : address(0),
+            isCelo: isCelo_,
             token: IERC20(_tokenAddress),
-            amount: isEth_? msg.value : _amount,
+            amount: isCelo_? msg.value : _amount,
             timeToComplete: _timeToComplete,
             infoHash: _ipfsHash,
             pickedUpHash: "",
             completedHash: "",
             _numOfUsers: _numOfUsers,
             users: new address[],
+            createdTime: block.timestamp,
             pickUpTime : 0,
-            status: QuestStatus.PENDING
+            status: status
         });
 
         if (_amount > 0)
@@ -83,9 +102,35 @@ contract SeedsOnEarth {
 
         quests.push(quest);
 
-        emit SponserQuest(quests.length - 1, _tokenAddress, quest.amount, _description);
+        emit CreateQuest(quests.length - 1, _tokenAddress, quest.amount, _numOfUsers, _timeToComplete, _ipfsHash);
     }
     
+    /**
+     * @notice sponsor a quest and deposits the quest's price.
+     * can be called by anyone to sponsor an unsponsored quest
+     * @param _questId id of quest to sponsor
+     * @param _tokenAddress address of token to pay for quest, unless it's CELO transfered with msg.value
+     * @param _amount amount of token to deposit for the quest's bounty
+     */
+    function sponsorQuest(_questId, address _tokenAddress, uint256 _amount) public payable {
+        Quest storage quest = quests[_questId];
+        require(quest.status == QuestStatus.CREATED, "Quest already sponsored");
+        require(block.timestamp - quest.createdTime < SPONSOR_PENDING_PERIOD, "Sponsor period expired");
+        
+        bool isCelo_ = (msg.value > 0);
+
+        if (_amount > 0)
+            quest.token.safeTransferFrom(msg.sender, address(this), _amount);
+
+        quest.status = QuestStatus.PENDING;
+        quest.sponsor = msg.sender;
+        quest.isCelo = isCelo_;
+        quest.amount = isCelo_? msg.value : _amount;
+        quest._tokenAddress = _tokenAddress;
+
+        emit SponserQuest(_questId, _tokenAddress, _amount);
+    }
+
     /**
     * @notice pick up a quest, called by user which then has `quest.timeToComplete` to complete it
     * @param _questId id of quest
@@ -120,14 +165,14 @@ contract SeedsOnEarth {
     }
 
     /**
-    * @notice sponser reviews submission of completed quest
+    * @notice creator reviews submission of completed quest
     * @param _questId id of quest
     * @param _approve whether to approve the completion and pay out the user or dismiss it (right to appeal and fairness)
     * (and pass to committee for final approval)
     **/
     function reviewSubmission(uint256 _questId, bool _approve) public {
         Quest storage quest = quests[_questId];
-        require(msg.sender == quest.sponser, "Only quest's sponser can review submission");
+        require(msg.sender == quest.creator, "Only quest's creator can review submission");
         require(quest.status == QuestStatus.COMPLETED, "Quest not completed");
         if (_approve) {
             _payOutQuest(quest, false);
@@ -138,7 +183,7 @@ contract SeedsOnEarth {
     }
 
     /**
-    * @notice after dismisal of quest completion by the sponser, or in case the timeout for completion had passed,
+    * @notice after dismisal of quest completion by the creator, or in case the timeout for completion had passed,
     * the committe can reset the quest back to pending
     * @param _questId id of quest
     **/
@@ -147,7 +192,7 @@ contract SeedsOnEarth {
         require(msg.sender == committee, "Only committee can reject submissions");
         require(quest.status == QuestStatus.DISMISSED || 
             (quest.status == QuestStatus.PICKEDUP && block.timestamp - quest.pickUpTime > quest.timeToComplete),
-             "Quest can only be reset if it was dismissed by sponser or time to complete had passed");
+             "Quest can only be reset if it was dismissed by creator or time to complete had passed");
         quest.pickedUpHash = "";
         quest.completedHash = "";
         quest.users = new address[];
@@ -157,39 +202,39 @@ contract SeedsOnEarth {
     }
 
     /**
-    * @notice after dismisal of quest completion by the sponser, the committe can choose to still 
+    * @notice after dismisal of quest completion by the creator, the committe can choose to still 
     * approve the completion and pay out the user (right to appeal and fairness)
     * @param _questId id of quest
     **/
     function approveSubmission(uint256 _questId) public {
         Quest storage quest = quests[_questId];
-        require(quest.status == QuestStatus.DISMISSED, "Quest was not dismissed by sponser");
+        require(quest.status == QuestStatus.DISMISSED, "Quest was not dismissed by creator");
         require(msg.sender == committee, "Only committee can approve submissions after dismisal");
         _payOutQuest(quest, false);
         emit ApproveSubmission(_questId);
     }
 
     /**
-    * @notice quest sponser can ask to withdraw his quest and get refunded, only in the case the quest is pending pick up
+    * @notice quest sponsor can ask to withdraw his quest and get refunded, only in the case the quest is pending pick up
     * @param _questId id of quest
     **/
     function withdraw(uint256 _questId) public {
         Quest storage quest = quests[_questId];
-        require(msg.sender == quest.sponser, "Only quest's sponser can request to withdraw");
+        require(msg.sender == quest.sponsor, "Only quest's sponsor can request to withdraw");
         require(quest.status == QuestStatus.PENDING, "Withdraw can be done only when quest is pending");
         _payOutQuest(quest, true);
         emit Withdraw(_questId);
     }
 
      /**
-    * @dev payout the amount of quest to users or refund sponser
+    * @dev payout the amount of quest to users or refund sponsor
     * (enabling financial access to local communities and ensuring fairness)
     **/
     function _payOutQuest(Quest storage _quest, bool _refund) private {
-        address[] to = _refund? [_quest.sponser] : _quest.users;
+        address[] to = _refund? [_quest.sponsor] : _quest.users;
         uint256 amount = _quest.amount / to.length;
         for (uint i = 0; i < to.length; i++) {
-            if (_quest.isEth){
+            if (_quest.isCelo){
                 (bool success,) = to[i].call{value: amount}("");
                 require(success, "Failed to send ETH");
             } else {
