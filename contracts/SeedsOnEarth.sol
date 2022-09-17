@@ -165,7 +165,7 @@ contract SeedsOnEarth {
              "Quest can only be reset if it was dismissed by sponser or time to complete had passed");
         quest.pickedUpHash = "";
         quest.completedHash = "";
-        quest.users = new address[](quest.numOfUsers);
+        quest.users = new address[](0);
         quest.status = QuestStatus.PENDING;
         quest.pickUpTime = 0;
         emit RejectSubmission(_questId);
