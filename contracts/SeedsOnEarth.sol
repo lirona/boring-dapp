@@ -57,13 +57,16 @@ contract SeedsOnEarth {
     }
 
     /**
-    * @notice add a new quest, called by quest's creator and deposits the quest's price 
+    * @notice add a new quest, called by quest's creator and deposits the quest's bounty.
+    * if there is no bounty deposited, the quest will be in pending status for 30 days, during which
+    * anyone can sponsor the quest.
     * (enabling financial access, local economies and global ecologies)
     * @param _tokenAddress address of token to pay for quest, unless it's ETH
     * @param _amount amount of token to deposit for completing the quest
-    * @param _ipfsHash IPFS hash of quest details
+    * @param _numOfUsers number of users required to complete the quest
     * @param _timeToComplete time in seconds between picking up the quest until it must be completed 
     * (ensuring lack of fraud)
+    * @param _ipfsHash IPFS hash of quest details
     **/
     function createQuest(
         address _tokenAddress, 
@@ -109,7 +112,7 @@ contract SeedsOnEarth {
     
     /**
      * @notice sponsor a quest and deposits the quest's price.
-     * can be called by anyone to sponsor an unsponsored quest
+     * can be called by anyone to sponsor a quest which doesn't have a bounty yet.
      * @param _questId id of quest to sponsor
      * @param _tokenAddress address of token to pay for quest, unless it's CELO transfered with msg.value
      * @param _amount amount of token to deposit for the quest's bounty
@@ -149,7 +152,8 @@ contract SeedsOnEarth {
     }
 
     /**
-    * @notice pick up a quest, called by user which then has `quest.timeToComplete` to complete it
+    * @notice pick up a quest, called any of the users that have joined the quest.
+    * after picking up, the users have `quest.timeToComplete` to complete it
     * @param _questId id of quest
     * @param _ipfsHash hash of before image/video of quest location (trustworthiness)
     **/
@@ -230,7 +234,8 @@ contract SeedsOnEarth {
     }
 
     /**
-    * @notice quest sponsor can ask to withdraw his quest and get refunded, only in the case the quest is pending pick up
+    * @notice quest sponsor can ask to withdraw his quest and get refunded, only in the case the
+    * quest is pending pick up
     * @param _questId id of quest
     **/
     function withdraw(uint256 _questId) public {
@@ -241,7 +246,7 @@ contract SeedsOnEarth {
         emit Withdraw(_questId);
     }
 
-     /**
+    /**
     * @dev payout the amount of quest to users or refund sponsor
     * (enabling financial access to local communities and ensuring fairness)
     **/
