@@ -75,7 +75,7 @@ contract SeedsOnEarth {
             pickedUpHash: "",
             completedHash: "",
             numOfUsers: _numOfUsers,
-            users: new address[](_numOfUsers),
+            users: new address[](0),
             pickUpTime : 0,
             status: QuestStatus.PENDING
         });
