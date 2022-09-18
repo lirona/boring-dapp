@@ -98,16 +98,18 @@ function NewQuestPage() {
       }
     });
 
-  const onDrop = useCallback((acceptedFiles) => {
-    setValue("image", acceptedFiles[0]);
-    setUploadedFile(URL.createObjectURL(acceptedFiles[0]));
-  }, []);
+  const onDrop = useCallback(
+    (acceptedFiles) => {
+      setValue("image", acceptedFiles[0]);
+      setUploadedFile(URL.createObjectURL(acceptedFiles[0]));
+    },
+    [setValue]
+  );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     multiple: false,
   });
-  console.log(errors);
 
   return (
     <section className="container">

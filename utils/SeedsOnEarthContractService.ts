@@ -4,8 +4,11 @@ import {
   CONTRACT_ADDRESS,
   CONTRACT_ABI,
   CELO_TOKEN_ADDRESS,
+  Token,
+  tokenList,
 } from "../constants";
 import {
+  convertAmountToCurrency,
   formatTokenAmount,
   getUrlFromCid,
   hoursToSeconds,
@@ -28,21 +31,45 @@ class SeedsOnEarthContractService {
     );
   }
 
+  async requestAllowance(token: Token, amount: number) {
+    try {
+      const tokenContract = new Contract(
+        token.address,
+        token.abi,
+        this.provider.getSigner()
+      );
+      const tx = await tokenContract.approve(
+        CONTRACT_ADDRESS,
+        convertAmountToCurrency(amount)
+      );
+      await tx.wait();
+      return true;
+    } catch (err) {
+      console.log(err);
+      return false;
+    }
+  }
+
   async createQuest(data: CreateQuestData): Promise<boolean> {
     try {
       const contract = this.getContract(true);
       const isCelo = data.tokenAddress == CELO_TOKEN_ADDRESS;
+      if (!isCelo) {
+        const transferApproved = await this.requestAllowance(
+          tokenList.find((token) => token.address == data.tokenAddress),
+          data.tokenAmount
+        );
+        if (!transferApproved) return false;
+      }
+
       const tx = await contract.createQuest(
         data.tokenAddress,
-        isCelo ? 0 : data.tokenAmount,
+        isCelo ? 0 : convertAmountToCurrency(data.tokenAmount),
         data.numberOfUsers,
         hoursToSeconds(data.timeToComplete),
         data.ipfsHash,
         {
-          value: ethers.utils.parseUnits(
-            isCelo ? data.tokenAmount.toString() : "0",
-            "ether"
-          ),
+          value: convertAmountToCurrency(isCelo ? data.tokenAmount : 0),
         }
       );
       const receipt = await tx.wait();
@@ -63,10 +90,7 @@ class SeedsOnEarthContractService {
         data.tokenAddress,
         isCelo ? 0 : data.tokenAmount,
         {
-          value: ethers.utils.parseUnits(
-            isCelo ? data.tokenAmount.toString() : "0",
-            "ether"
-          ),
+          value: convertAmountToCurrency(isCelo ? data.tokenAmount : 0),
         }
       );
       const receipt = await tx.wait();

@@ -32,3 +32,7 @@ export const hoursToSeconds = (hours: number) => {
 export const secondsToHours = (seconds: number) => {
   return seconds / 60 / 60;
 };
+
+export const convertAmountToCurrency = (amount: number) => {
+  return ethers.utils.parseUnits(amount.toString(), "ether").toString();
+};
