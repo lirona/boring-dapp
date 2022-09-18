@@ -51,7 +51,7 @@ contract SeedsOnEarth {
     mapping(uint256 => QuestStatus) public questStatuses;
 
     uint256 public constant WITHDRAW_PENDING_PERIOD = 7 * 24 * 60 * 60; // 7 days
-    uint256 public constant SPONSOR_PENDING_PERIOD = 30 * 24 * 60 * 60; // 30 days
+    uint256 public constant SPONSOR_PENDING_PERIOD = 90 * 24 * 60 * 60; // 90 days
 
     address public committee;
 
