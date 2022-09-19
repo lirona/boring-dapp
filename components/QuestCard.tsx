@@ -13,7 +13,11 @@ const QuestCard = ({ quest }: Props) => {
     <Link href={`/quests/${quest.id}`}>
       <a className="card card-compact bg-base-100 shadow-xl">
         <figure>
-          <img src={quest.imageUrl || "/placeholder.png"} alt={quest.title} />
+          <img
+            src={quest.imageUrl || "/placeholder.png"}
+            alt={quest.title}
+            className="h-64 object-cover w-full"
+          />
         </figure>
         <div className="card-body">
           <h2 className="card-title text-2xl">{quest.title}</h2>
