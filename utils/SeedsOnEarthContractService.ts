@@ -54,7 +54,7 @@ class SeedsOnEarthContractService {
     try {
       const contract = this.getContract(true);
       const isCelo = data.tokenAddress == CELO_TOKEN_ADDRESS;
-      if (!isCelo) {
+      if (!isCelo && data.tokenAddress && data.tokenAmount) {
         const transferApproved = await this.requestAllowance(
           tokenList.find((token) => token.address == data.tokenAddress),
           data.tokenAmount
